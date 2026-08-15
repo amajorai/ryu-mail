@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ryu.mail",
+  "version": "1.0.0",
+  "description": "Agent Inboxes — email as a service for agents. Runs the out-of-process ryu-mail sidecar; Core proxies /api/mail/* to it. Its sandboxed companion is a per-node mail client (list inboxes, read messages, compose/send, create an inbox) driving /api/mail/* via the mail:crud bridge capability.",
+  "keywords": [
+    "email",
+    "inbox",
+    "communication",
+    "agents"
+  ],
+  "extensions": {
+    "com.ryuhq.ryu": {
+      "id": "@ryu/mail",
+      "displayName": "Mail"
+    }
+  }
+}
