@@ -710,6 +710,7 @@ mod tests {
         let expected_blob_dir = new_dir.join("mail-blobs");
         assert_eq!(path.parent(), Some(expected_blob_dir.as_path()));
         assert_eq!(std::fs::read(path).unwrap(), b"relocation-safe");
+        drop(relocated);
         std::fs::remove_dir_all(root).unwrap();
     }
 
