@@ -1,0 +1,116 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./icon-dark.png" />
+    <img src="./icon-light.png" alt="Mail" width="144" />
+  </picture>
+</p>
+
+<div align="center">
+
+# Mail
+
+</div>
+
+Email-as-a-service for agents (receive, store, and send agent email per node). The out-of-process ryu-mail sidecar; Core proxies /api/mail/* to it.
+
+> **The public home of `ryu-mail`.** Source, builds, and releases live here —
+> binaries for every platform are attached to each release.
+>
+> This tree is generated from the Ryu monorepo, so commits pushed here
+> directly are replaced on the next sync. **Pull requests are welcome** —
+> open them here and they are ported into the monorepo, then flow back out.
+> Ryu as a whole: https://github.com/amajorai/ryu
+
+## Install
+
+**App:** [Install](ryu://apps/@ryu/mail) (opens the Ryu desktop app and asks you to confirm)
+
+**CLI:**
+
+```bash
+ryu apps add @ryu/mail
+```
+
+**Crate:**
+
+```bash
+cargo install ryu-mail
+```
+
+Prebuilt binaries for every platform are attached to [each release](https://github.com/amajorai/ryu/releases).
+
+## License
+
+Apache-2.0 — see [LICENSE](./LICENSE).
+
+## Parts
+
+- **`backend/` — `ryu-mail` (out-of-process sidecar).** A standalone Axum binary
+  (its own crate, ZERO dependency on `apps/core`) that owns `mail.db`: inbox
+  registry, message store, MIME assembly, and SMTP send (`lettre`) + inbound parse
+  (`mail-parser`). Core spawns it (`SidecarProcess::Local`, host/sibling binary,
+  no download), health-checks `/health`, and proxies `/api/mail/*` to it
+  on loopback. Route paths are byte-identical to Core's old in-process routes so
+  the proxy passes straight through.
+- **`ui/` — companion (`@ryu/mail-app`).** A sandboxed full-page Companion
+  (Path B, `ui_format: "html"`), built to one self-contained `dist/index.html` via
+  `vite-plugin-singlefile`. A per-node mail client: list inboxes, read messages,
+  compose/send, create an inbox (revealing its inbound webhook secret + forwarder
+  URL). Every call goes over the `window.ryu` bridge, never `fetch`.
+
+## Manifest (`manifest.json`)
+
+- **Capability grant:** `mail:crud` — the bridge capability the companion calls.
+- **Sidecar:** `ryu-mail` on `:7996`, `command_env: RYU_MAIL_BIN`,
+  `port_env: RYU_MAIL_PORT`, `http.public_mount: /api/mail` (a built-in owning a
+  stable external URL), `max_body_bytes ~26MB` for attachments.
+- **Runnable:** one `companion` (`Agent Inboxes`, icon `mail-01`).
+- **App events (`contributes.hook_events`):** `@ryu/mail#message.received` and
+  `@ryu/mail#message.sent`, raised by the sidecar through `events.emit` so a
+  plugin hook or workflow can react to mail without either side knowing the other
+  exists. Both carry **metadata only** (ids, addresses, subject, timestamps) — the
+  fan-out payload reaches every subscriber verbatim, so bodies stay behind the
+  authed `GET /api/mail/messages/:id`. `message.sent` marks SMTP hand-off, not
+  delivery.
+
+## Run as a standalone service
+
+The same `ryu-mail` binary can serve one independently deployed Mail tenant. Set
+an explicit standalone token and bind address; the standalone token is separate
+from Core's injected `RYU_EXT_TOKEN`:
+
+```sh
+RYU_MAIL_MODE=standalone \
+RYU_MAIL_API_TOKEN=mail-example-secret \
+RYU_MAIL_HOSTNAME=0.0.0.0 \
+RYU_MAIL_PORT=7996 \
+RYU_DIR=/var/lib/ryu-mail \
+cargo run --manifest-path apps-store/mail/backend/Cargo.toml
+```
+
+The existing `/api/mail/*` API is available directly. Put TLS, rate limiting,
+and the inbound mail provider in front of the service. Standalone mode is
+single-tenant: the configured bearer can read and manage every inbox in that
+service's database. Incoming messages still require the per-inbox HMAC secret;
+they do not use the bearer token.
+
+The standalone root `GET /` redirects people to the Ryu organization dashboard;
+the `/api/mail/*` API and inbound webhook remain available for service callers.
+
+`RYU_MAIL_API_TOKEN` must be present before a non-loopback bind is allowed. A
+Core-issued token is accepted only for the loopback sidecar path and is never a
+standalone credential.
+
+## Auth / security
+
+Core-hosted mode binds **loopback only** and fail-closes: protected `/api/mail/*`
+routes require the shared-secret bearer Core injects at spawn. Standalone mode
+uses `RYU_MAIL_API_TOKEN` with the same protected routes. The inbound webhook
+(`POST /api/mail/inbound/:id`) keeps its own per-inbox HMAC-SHA256 auth and is
+reachable tokenless.
+
+## Swap seam
+
+Mail scales and fails independently of the node. Because the backend is a separate
+process behind a stable `/api/mail/*` contract, any equivalent mail backend can
+replace `ryu-mail` without touching Core.
