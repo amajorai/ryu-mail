@@ -1,0 +1,45 @@
+[package]
+name = "ryu-mail"
+version = "0.2.5"
+edition = "2021"
+description = "Standalone out-of-process mail sidecar for Ryu: self-host Agent Inboxes (receive/store/send) that Core proxies to on loopback. The tracer for apps-as-microservices."
+license = "Apache-2.0"
+repository = "https://github.com/amajorai/ryu"
+
+[[bin]]
+name = "ryu-mail"
+path = "src/main.rs"
+
+# Versions are matched to apps/core/Cargo.toml so there is no version skew when
+# Core proxies to this sidecar. This crate has ZERO dependency on apps/core (that
+# would be circular and defeat the process-boundary point of the tracer).
+# `ryu-app-events` does not break that: it is a standalone crate holding only the
+# outbound half of the emit call (an HTTP POST to Core's `events.emit` capability),
+# so it links none of Core. The `version` alongside the path is what lets the
+# published satellite tree — which has no sibling `crates/` — resolve it from the
+# registry instead.
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+ryu-crypto = { path = "../crates/core/crypto", version = "0.2.5" }
+ryu-sidecar-runtime = { path = "../crates/core/sidecar-runtime", version = "0.2.5" }
+dirs = "5"
+rusqlite = { version = "0.40.0", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json"] }
+mail-parser = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ryu-app-events = { path = "../crates/core/app-events", version = "0.2.5" }
+
+# The OpenAPI document this sidecar serves at `GET /openapi.json`. Core fetches it on
+# the first Healthy edge and derives one LLM tool per operation, so the annotations are
+# the ONLY way an agent can reach this app — an unannotated route is invisible, not
+# merely undocumented. Pinned to the workspace-wide 5.5.0; there is no `utoipa-axum`
+# here, which is why every `paths(...)` row is hand-written.
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
